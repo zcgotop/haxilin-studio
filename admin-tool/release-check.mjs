@@ -137,9 +137,14 @@ export function verifyArtifacts(root = PROJECT_ROOT) {
     add(!adapter.name || adapter.name === WORKER_NAME,
       adapter.name === WORKER_NAME ? `目标 Worker：${adapter.name}` : `目标 Worker 是「${adapter.name}」，与线上 ${WORKER_NAME} 不一致`);
 
-    // 5) KV 绑定：评论区依赖 SESSION，丢了就是功能静默失效
+    // 5) SESSION：@astrojs/cloudflare 把 session 的 KV 绑定名硬编码成默认值
+    //    DEFAULT_SESSION_KV_BINDING_NAME = "SESSION"，所以每次构建都会把它写进部署配置。
+    //    实测：src/ 里 Astro.session 使用次数为 0，评论区是 Giscus 外部脚本，
+    //    因此这个绑定属于历史遗留，只作提示、不作为阻塞项（阻塞它等于用一个假因果关系拦发布）。
     const hasSession = (adapter.kv_namespaces || []).some((k) => k.binding === "SESSION");
-    add(hasSession, hasSession ? "SESSION KV 绑定在位（评论区可用）" : "缺少 SESSION KV 绑定，部署后评论区会失效");
+    add(true, hasSession
+      ? "ℹ SESSION 是适配器默认的 session KV 绑定名（本项目未使用 Astro.session，评论区走 Giscus）——不阻塞"
+      : "ℹ 部署配置里没有 SESSION 绑定（适配器默认会加，缺失说明适配器版本或配置有变）——不阻塞");
   }
 
   // 6) 首页产物
