@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { verifyArtifacts, runSmokeTest } from "./release-check.mjs";
 
 /* ==================== 路径 ==================== */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -437,8 +438,11 @@ let deployState = {
   startTime: null,
 };
 
-// POST /api/deploy — 构建并部署（SSE 流式输出）
+// GET /api/deploy — 构建 → 产物闸门 → 部署 → 冒烟测试（SSE 流式输出）
+// 加 ?dry=1 只构建并校验产物，不部署（发布前先看「这次会改变什么」）
 app.get("/api/deploy", (req, res) => {
+  const dryRun = req.query.dry === "1" || req.query.dry === "true";
+
   // SSE 头
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -498,8 +502,29 @@ app.get("/api/deploy", (req, res) => {
     }
 
     send("success", "✅ 构建成功！");
+
+    // 第二步：产物闸门。构建退出码 0 不等于产物可用——2026-11-16 的两次线上故障
+    // （首页 404 / /api/stats 500）都是「发了残缺或错误的产物」，闸门就为此存在。
+    send("info", "🔍 正在校验构建产物...");
+    const gate = verifyArtifacts(PROJECT_ROOT);
+    for (const c of gate.checks) send(c.ok ? "info" : "error", `${c.ok ? "✔" : "✖"} ${c.msg}`);
+    if (!gate.ok) {
+      send("error", "⛔ 产物闸门未通过，已中止部署。线上版本未受任何影响。");
+      deployState.status = "error";
+      res.end();
+      return;
+    }
+    send("success", "✅ 产物闸门通过");
+
+    if (dryRun) {
+      send("info", "🧪 dry-run：只构建 + 校验，未部署。去掉 ?dry=1 即为正式发布。");
+      deployState.status = "success";
+      res.end();
+      return;
+    }
+
     deployState.status = "deploying";
-    send("info", "📤 正在部署到 Cloudflare Pages...");
+    send("info", "📤 正在部署到 Cloudflare Worker（haxilin-studio）...");
 
     // 清理旧的 wrangler 部署配置（避免 stale config 冲突）
     const wranglerDeployConfig = path.join(PROJECT_ROOT, ".wrangler", "deploy", "config.json");
@@ -549,15 +574,30 @@ app.get("/api/deploy", (req, res) => {
       res.end();
     });
 
-    deployProc.on("close", (code2) => {
+    deployProc.on("close", async (code2) => {
       if (code2 !== 0) {
         send("error", `❌ 部署失败，退出码 ${code2}`);
         deployState.status = "error";
-      } else {
-        const elapsed = ((Date.now() - deployState.startTime) / 1000).toFixed(1);
-        send("success", `🎉 部署成功！耗时 ${elapsed}s`);
+        res.end();
+        return;
+      }
+
+      const elapsed = ((Date.now() - deployState.startTime) / 1000).toFixed(1);
+      send("success", `🎉 部署完成，耗时 ${elapsed}s`);
+
+      // 第三步：冒烟测试。部署成功不等于站点可用，逐个真实请求线上关键端点。
+      // 状态保持 deploying，避免冒烟期间被当成「已结束」而并发下一次发布。
+      send("info", "🧪 冒烟测试：请求线上关键端点...");
+      await new Promise((r) => setTimeout(r, 2500)); // 给版本传播留时间
+      const smoke = await runSmokeTest((type, msg) => send(type, msg));
+      if (smoke.ok) {
+        send("success", "✅ 冒烟测试全部通过");
         send("info", "🌐 站点已上线: https://x.zcgo.top");
         deployState.status = "success";
+      } else {
+        send("error", `⚠️ 冒烟测试 ${smoke.failed.length} 项异常：${smoke.failed.join("、")}`);
+        send("info", "🛟 回滚：npx wrangler versions rollback <上一个版本 ID>（版本 ID 见部署日志）");
+        deployState.status = "error";
       }
       res.end();
     });
@@ -573,7 +613,7 @@ app.get("/api/deploy", (req, res) => {
 app.get("/api/deploy-status", (req, res) => {
   res.json({
     status: deployState.status,
-    logs: deployState.logs.slice(-20),
+    logs: deployState.logs.slice(-60),
   });
 });
 
