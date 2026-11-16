@@ -94,23 +94,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ========== Skip Link（无障碍跳转） ========== */
-.skip-link {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  background: var(--color-text);
-  color: var(--color-bg);
-  padding: 0.5rem 1rem;
-  z-index: 1000;
-  border-radius: 0 0 6px 0;
-  transition: top 0.2s;
-}
-
-.skip-link:focus {
-  top: 0;
-}
-
 /* ========== 主内容区 ========== */
 main {
   flex: 1;

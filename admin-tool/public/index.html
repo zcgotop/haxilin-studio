@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>博客编辑器 — HaxiLin Studio</title>
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
 
@@ -24,6 +24,12 @@
       <button data-filter="all" class="active">全部</button>
       <button data-filter="draft">草稿</button>
       <button data-filter="published">已发布</button>
+    </div>
+
+    <div class="sidebar-categories">
+      <button data-category="all" class="active">全部</button>
+      <button data-category="blog">博客</button>
+      <button data-category="alt">Alter</button>
     </div>
 
     <div class="article-list" id="articleList"></div>
@@ -62,6 +68,7 @@
             <input type="date" id="fDate">
           </div>
           <div class="tag-wrap" id="tagWrap"></div>
+          <div class="tag-wrap alt-tag-wrap" id="altTagWrap" style="display:none;"></div>
           <button class="img-upload-btn" id="imgBtn" type="button">📷 插入图片</button>
         </div>
       </div>
@@ -89,6 +96,7 @@
         <button data-action="ul" title="无序列表">• —</button>
         <button data-action="ol" title="有序列表">1.</button>
         <button data-action="hr" title="分割线">―</button>
+        <button data-action="table" title="表格">▦</button>
       </div>
 
       <!-- 图片选择器（隐藏的 file input，支持多选） -->
@@ -208,6 +216,6 @@
   </div>
 </div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>

@@ -4,8 +4,13 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import PostCard from "../components/PostCard.astro";
 
 const pageTitle = "博客";
-const allPosts = await getCollection("blog");
-const allTags = [...new Set(allPosts.map((post) => post.data.tags).flat())];
+const ALT_TAG = "alt";
+const allPosts = (await getCollection("blog"))
+    .filter((post) => !post.data.tags.includes(ALT_TAG))
+    .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
+const allTags = [
+    ...new Set(allPosts.map((post) => post.data.tags).flat()),
+].sort();
 ---
 
 <BaseLayout pageTitle={pageTitle} showTitle={false}>
@@ -13,41 +18,189 @@ const allTags = [...new Set(allPosts.map((post) => post.data.tags).flat())];
         <div class="blog-header">
             <h1>博客</h1>
             <p>在这里，我将分享我的学习之旅。</p>
-            <a
-                class="rss-link"
-                href="/rss.xml"
-                target="_blank"
-                rel="noopener noreferrer"
-            >
-                <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    ><circle cx="4" cy="20" r="3"></circle><path
-                        d="M4 11a9 9 0 0 1 9 9h3a12 12 0 0 0-12-12v3zm0-7a16 16 0 0 1 16 16h3A19 19 0 0 0 4 4v3z"
-                    ></path></svg
+            <div class="blog-header-actions">
+                <a class="alter-link" href="/alt">Alter</a>
+                <a
+                    class="rss-link"
+                    href="/rss.xml"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="RSS 订阅"
                 >
-                RSS
-            </a>
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        role="img"
+                        aria-hidden="true"
+                    >
+                        <circle cx="6.18" cy="17.82" r="2.18"></circle>
+                        <path
+                            d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56zm0 5.66v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"
+                        ></path>
+                    </svg>
+                    RSS
+                </a>
+            </div>
         </div>
 
         {allTags.length > 0 && (
             <div class="blog-tags">
                 <span class="blog-tags-label">标签：</span>
+                <button
+                    type="button"
+                    class="blog-tag blog-tag-clear active"
+                >
+                    全部
+                </button>
                 {allTags.map((tag) => (
-                    <a href={`/tags/${tag}`} class="blog-tag">{tag}</a>
+                    <button
+                        type="button"
+                        class="blog-tag"
+                        data-tag={tag}
+                    >
+                        {tag}
+                    </button>
                 ))}
             </div>
         )}
 
+        <div class="filter-bar">
+            <div class="filter-mode" id="filter-mode">
+                <span class="filter-mode-label">筛选方式：</span>
+                <button
+                    type="button"
+                    class="filter-mode-btn active"
+                    data-mode="any"
+                >
+                    任选其一
+                </button>
+                <button
+                    type="button"
+                    class="filter-mode-btn"
+                    data-mode="all"
+                >
+                    全部满足
+                </button>
+            </div>
+            <p class="filter-count" id="filter-count">
+                共 {allPosts.length} 篇文章
+            </p>
+        </div>
+
         <div class="post-list">
             {allPosts.map((post) => (
-                <PostCard post={post} />
+                <div class="post-item" data-tags={post.data.tags.join(",")}>
+                    <PostCard post={post} />
+                </div>
             ))}
         </div>
+
+        <p class="filter-empty" id="filter-empty">没有匹配的文章</p>
     </div>
 </BaseLayout>
+
+<script>
+    const selected = new Set();
+    let filterMode = "any"; // 'any' = 任选其一(OR), 'all' = 全部满足(AND)
+    const tagButtons = document.querySelectorAll(".blog-tag[data-tag]");
+    const clearBtn = document.querySelector(".blog-tag-clear");
+    const modeButtons = document.querySelectorAll(".filter-mode-btn");
+    const modeWrap = document.getElementById("filter-mode");
+    const items = document.querySelectorAll(".post-item");
+    const countEl = document.getElementById("filter-count");
+    const emptyEl = document.getElementById("filter-empty");
+    const total = items.length;
+    const modeText = { any: "任选其一", all: "全部满足" };
+
+    function applyFilter() {
+        let visible = 0;
+        items.forEach((item) => {
+            const tags = (item.dataset.tags || "")
+                .split(",")
+                .filter(Boolean);
+            let show;
+            if (selected.size === 0) {
+                show = true;
+            } else if (filterMode === "any") {
+                show = [...selected].some((t) => tags.includes(t));
+            } else {
+                show = [...selected].every((t) => tags.includes(t));
+            }
+            item.style.display = show ? "" : "none";
+            if (show) visible++;
+        });
+        countEl.textContent =
+            selected.size === 0
+                ? `共 ${total} 篇文章`
+                : `显示 ${visible} / ${total} 篇 · ${modeText[filterMode]}`;
+        emptyEl.style.display = visible === 0 ? "block" : "none";
+        // 选中 0 或 1 个标签时，两种模式结果相同，降低开关存在感
+        modeWrap.classList.toggle("dimmed", selected.size < 2);
+        tagButtons.forEach((btn) => {
+            btn.classList.toggle("active", selected.has(btn.dataset.tag));
+        });
+        if (clearBtn)
+            clearBtn.classList.toggle("active", selected.size === 0);
+    }
+
+    tagButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const tag = btn.dataset.tag;
+            if (selected.has(tag)) selected.delete(tag);
+            else selected.add(tag);
+            applyFilter();
+        });
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+            selected.clear();
+            applyFilter();
+        });
+    }
+
+    modeButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+            filterMode = btn.dataset.mode;
+            modeButtons.forEach((b) =>
+                b.classList.toggle("active", b === btn),
+            );
+            applyFilter();
+        });
+    });
+
+    function syncFromHash() {
+        const hash = decodeURIComponent(location.hash.slice(1));
+        if (hash) {
+            selected.clear();
+            selected.add(hash);
+            applyFilter();
+        }
+    }
+
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+
+    // 列表项懒加载：滚动到视口时淡入
+    const lazyObserver = new IntersectionObserver(
+        (entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add("lazy-visible");
+                    lazyObserver.unobserve(entry.target);
+                }
+            });
+        },
+        { rootMargin: "80px" },
+    );
+    items.forEach((item) => {
+        item.classList.add("lazy");
+        lazyObserver.observe(item);
+    });
+</script>
 
 <style>
     .blog-page {
@@ -80,7 +233,7 @@ const allTags = [...new Set(allPosts.map((post) => post.data.tags).flat())];
         flex-wrap: wrap;
         align-items: center;
         gap: 0.5rem;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
         padding: 0.8rem 1rem;
         border: 1px solid var(--color-border);
         border-radius: 12px;
@@ -99,13 +252,85 @@ const allTags = [...new Set(allPosts.map((post) => post.data.tags).flat())];
         font-size: 0.8rem;
         border: 1px solid var(--color-border);
         color: var(--color-text);
-        transition: border-color 0.2s, background 0.2s;
+        background: transparent;
+        cursor: pointer;
+        font-family: inherit;
+        transition: border-color 0.2s, background 0.2s, color 0.2s;
     }
 
     .blog-tag:hover {
         border-color: var(--color-accent);
         color: var(--color-accent);
         background: var(--color-card-hover-bg);
+    }
+
+    .blog-tag.active {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-card-hover-bg);
+    }
+
+    .filter-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .filter-mode {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        transition: opacity 0.25s;
+    }
+
+    .filter-mode.dimmed {
+        opacity: 0.45;
+    }
+
+    .filter-mode-label {
+        color: var(--color-text-muted);
+        white-space: nowrap;
+    }
+
+    .filter-mode-btn {
+        padding: 0.15rem 0.6rem;
+        border-radius: 16px;
+        font-size: 0.75rem;
+        border: 1px solid var(--color-border);
+        background: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        font-family: inherit;
+        transition: border-color 0.2s, background 0.2s, color 0.2s;
+    }
+
+    .filter-mode-btn:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+    }
+
+    .filter-mode-btn.active {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-card-hover-bg);
+    }
+
+    .filter-count {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        margin: 0;
+    }
+
+    .filter-empty {
+        color: var(--color-text-muted);
+        font-style: italic;
+        text-align: center;
+        padding: 2rem 0;
+        display: none;
     }
 
     .rss-link {
@@ -124,9 +349,41 @@ const allTags = [...new Set(allPosts.map((post) => post.data.tags).flat())];
         background: var(--color-blockquote-bg);
     }
 
+    .blog-header-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .alter-link {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        padding: 0.4rem 0.6rem;
+        border-radius: 6px;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: color 0.2s;
+    }
+
+    .alter-link:hover {
+        color: var(--color-text);
+    }
+
     .post-list {
         display: flex;
         flex-direction: column;
         gap: 1rem;
+    }
+
+    /* 列表项懒加载动画：滚动到视口时淡入 */
+    .post-item.lazy {
+        opacity: 0;
+        transform: translateY(12px);
+        transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+    }
+
+    .post-item.lazy.lazy-visible {
+        opacity: 1;
+        transform: translateY(0);
     }
 </style>

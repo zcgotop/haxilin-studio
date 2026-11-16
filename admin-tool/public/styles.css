@@ -200,6 +200,30 @@ input, textarea {
   background: var(--accent-bg);
 }
 
+/* 分类筛选（博客 / Alter） */
+.sidebar-categories {
+  display: flex;
+  gap: 0.2rem;
+  padding: 0 1.2rem 0.6rem;
+  border-bottom: 1px solid var(--border-light);
+}
+.sidebar-categories button {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.sidebar-categories button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.sidebar-categories button.active {
+  color: var(--accent);
+  font-weight: 600;
+  background: var(--accent-bg);
+}
+
 /* 文章列表 */
 .article-list {
   flex: 1;
@@ -256,6 +280,22 @@ input, textarea {
 .ai-badge.published {
   background: rgba(107, 142, 90, 0.15);
   color: var(--success);
+}
+
+/* 分类标识（博客 / Alter） */
+.article-item .ai-cat {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  font-weight: 600;
+}
+.ai-cat.blog {
+  background: rgba(99, 132, 191, 0.15);
+  color: #6a84bf;
+}
+.ai-cat.alt {
+  background: rgba(151, 42, 68, 0.18);
+  color: #b9416a;
 }
 
 .empty-list {
@@ -446,6 +486,14 @@ input, textarea {
   margin-bottom: 0.6rem;
 }
 
+/* Alt 专属标签栏：选中 alt tag 后才显示 */
+.alt-tag-wrap {
+  padding: 0.4rem 0.5rem;
+  border: 1px dashed rgba(47, 109, 181, 0.35);
+  border-radius: 8px;
+  background: rgba(47, 109, 181, 0.04);
+}
+
 .tag-chip {
   padding: 0.2rem 0.65rem;
   border-radius: 20px;
@@ -464,6 +512,24 @@ input, textarea {
   border-color: var(--accent);
   background: var(--accent-bg);
   color: var(--accent);
+  font-weight: 500;
+}
+
+/* alt 分流 tag：未选中比普通 tag 更淡，选中后变蓝色 */
+.tag-chip.alt-tag {
+  border-color: var(--border-light);
+  color: var(--text-tertiary);
+  background: transparent;
+}
+
+.tag-chip.alt-tag:hover {
+  border-color: var(--border);
+}
+
+.tag-chip.alt-tag.selected {
+  border-color: #2f6db5;
+  background: rgba(47, 109, 181, 0.12);
+  color: #2f6db5;
   font-weight: 500;
 }
 
@@ -718,6 +784,37 @@ input, textarea {
   border: none;
   border-top: 1px solid var(--border);
   margin: 1.5rem 0;
+}
+
+/* 表格 */
+.preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2rem 0;
+  font-size: 0.88rem;
+  border: 1px solid var(--border);
+}
+
+.preview th, .preview td {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.preview thead th {
+  background: var(--bg-toolbar);
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--accent-light);
+}
+
+.preview tbody tr:nth-child(even) {
+  background: rgba(45, 37, 32, 0.025);
+}
+
+.preview tbody tr:hover {
+  background: var(--bg-hover);
 }
 
 /* ========== 状态栏 ========== */

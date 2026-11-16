@@ -19,16 +19,15 @@ const isHome = Astro.url.pathname === "/";
                 <link rel="preload" href="/fonts/HongLeiXingShuJianTi-2.woff2" as="font" type="font/woff2" crossorigin />
             </>
         )}
-        {/* Umami 自托管统计脚本占位 —— 拿到 Umami 实例地址后替换 src */}
+        {/* Umami 自托管访客统计 */}
         <script is:inline defer
             src="https://umami.zcgo.top/script.js"
-            data-website-id="REPLACE_WITH_UMAMI_WEBSITE_ID">
+            data-website-id="1d73d696-35c2-4d95-9e6a-3401713004c9">
         </script>
     </head>
     <body>
-        <a href="#main-content" class="skip-link">跳转到主要内容</a>
         <Header />
-        <main id="main-content">
+        <main>
             {showTitle && <h1>{pageTitle}</h1>}
             <slot />
         </main>

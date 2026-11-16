@@ -1,0 +1,364 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import PostCard from "../components/PostCard.astro";
+
+const ALT_TAG = "alt";
+
+const altPosts = (await getCollection("blog"))
+    .filter((post) => post.data.tags.includes(ALT_TAG))
+    .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime());
+
+const altTags = [
+    ...new Set(altPosts.map((post) => post.data.altTags).flat()),
+].sort();
+
+const pageTitle = "My Alter";
+---
+
+<BaseLayout pageTitle={pageTitle} showTitle={false}>
+    <div class="alt-page">
+        <div class="alt-header">
+            <h1>My Alter</h1>
+            <p>另一些文字，藏在 Alter 之下。</p>
+            <div class="alt-header-actions">
+                <a class="blog-link" href="/blog">博客</a>
+            </div>
+        </div>
+
+        {altTags.length > 0 && (
+            <div class="alt-tags">
+                <span class="alt-tags-label">标签：</span>
+                <button
+                    type="button"
+                    class="alt-tag alt-tag-clear active"
+                >
+                    全部
+                </button>
+                {altTags.map((tag) => (
+                    <button
+                        type="button"
+                        class="alt-tag"
+                        data-tag={tag}
+                    >
+                        {tag}
+                    </button>
+                ))}
+            </div>
+        )}
+
+        <div class="filter-bar">
+            <div class="filter-mode" id="filter-mode">
+                <span class="filter-mode-label">筛选方式：</span>
+                <button
+                    type="button"
+                    class="filter-mode-btn active"
+                    data-mode="any"
+                >
+                    任选其一
+                </button>
+                <button
+                    type="button"
+                    class="filter-mode-btn"
+                    data-mode="all"
+                >
+                    全部满足
+                </button>
+            </div>
+            <p class="filter-count" id="filter-count">
+                共 {altPosts.length} 篇文章
+            </p>
+        </div>
+
+        {altPosts.length === 0 ? (
+            <p class="empty">这里还什么都没有。</p>
+        ) : (
+            <div class="post-list">
+                {altPosts.map((post) => (
+                    <div
+                        class="post-item"
+                        data-alttags={(post.data.altTags || []).join(",")}
+                    >
+                        <PostCard post={post} />
+                    </div>
+                ))}
+            </div>
+        )}
+
+        <p class="filter-empty" id="filter-empty">没有匹配的文章</p>
+    </div>
+</BaseLayout>
+
+<script>
+    const selected = new Set();
+    let filterMode = "any"; // 'any' = 任选其一(OR), 'all' = 全部满足(AND)
+    const tagButtons = document.querySelectorAll(".alt-tag[data-tag]");
+    const clearBtn = document.querySelector(".alt-tag-clear");
+    const modeButtons = document.querySelectorAll(".filter-mode-btn");
+    const modeWrap = document.getElementById("filter-mode");
+    const items = document.querySelectorAll(".post-item");
+    const countEl = document.getElementById("filter-count");
+    const emptyEl = document.getElementById("filter-empty");
+    const total = items.length;
+    const modeText = { any: "任选其一", all: "全部满足" };
+
+    function applyFilter() {
+        let visible = 0;
+        items.forEach((item) => {
+            const tags = (item.dataset.alttags || "")
+                .split(",")
+                .filter(Boolean);
+            let show;
+            if (selected.size === 0) {
+                show = true;
+            } else if (filterMode === "any") {
+                show = [...selected].some((t) => tags.includes(t));
+            } else {
+                show = [...selected].every((t) => tags.includes(t));
+            }
+            item.style.display = show ? "" : "none";
+            if (show) visible++;
+        });
+        countEl.textContent =
+            selected.size === 0
+                ? `共 ${total} 篇文章`
+                : `显示 ${visible} / ${total} 篇 · ${modeText[filterMode]}`;
+        emptyEl.style.display = visible === 0 ? "block" : "none";
+        modeWrap.classList.toggle("dimmed", selected.size < 2);
+        tagButtons.forEach((btn) => {
+            btn.classList.toggle("active", selected.has(btn.dataset.tag));
+        });
+        if (clearBtn)
+            clearBtn.classList.toggle("active", selected.size === 0);
+    }
+
+    tagButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const tag = btn.dataset.tag;
+            if (selected.has(tag)) selected.delete(tag);
+            else selected.add(tag);
+            applyFilter();
+        });
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+            selected.clear();
+            applyFilter();
+        });
+    }
+
+    modeButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+            filterMode = btn.dataset.mode;
+            modeButtons.forEach((b) =>
+                b.classList.toggle("active", b === btn),
+            );
+            applyFilter();
+        });
+    });
+
+    function syncFromHash() {
+        const hash = decodeURIComponent(location.hash.slice(1));
+        if (hash) {
+            selected.clear();
+            selected.add(hash);
+            applyFilter();
+        }
+    }
+
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+
+    // 列表项懒加载：滚动到视口时淡入
+    const lazyObserver = new IntersectionObserver(
+        (entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add("lazy-visible");
+                    lazyObserver.unobserve(entry.target);
+                }
+            });
+        },
+        { rootMargin: "80px" },
+    );
+    items.forEach((item) => {
+        item.classList.add("lazy");
+        lazyObserver.observe(item);
+    });
+</script>
+
+<style>
+    .alt-page {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 3rem;
+    }
+
+    .alt-header {
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .alt-header h1 {
+        font-size: 2.2rem;
+        margin-bottom: 0.3rem;
+    }
+
+    .alt-header p {
+        color: var(--color-text-muted);
+        width: 100%;
+    }
+
+    .alt-header-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .blog-link {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        padding: 0.4rem 0.6rem;
+        border-radius: 6px;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: color 0.2s;
+    }
+
+    .blog-link:hover {
+        color: var(--color-text);
+    }
+
+    .alt-tags {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding: 0.8rem 1rem;
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+    }
+
+    .alt-tags-label {
+        font-size: 0.85rem;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+    }
+
+    .alt-tag {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        border: 1px solid var(--color-border);
+        color: var(--color-text);
+        background: transparent;
+        cursor: pointer;
+        font-family: inherit;
+        transition: border-color 0.2s, background 0.2s, color 0.2s;
+    }
+
+    .alt-tag:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-card-hover-bg);
+    }
+
+    .alt-tag.active {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-card-hover-bg);
+    }
+
+    .filter-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .filter-mode {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        transition: opacity 0.25s;
+    }
+
+    .filter-mode.dimmed {
+        opacity: 0.45;
+    }
+
+    .filter-mode-label {
+        color: var(--color-text-muted);
+        white-space: nowrap;
+    }
+
+    .filter-mode-btn {
+        padding: 0.15rem 0.6rem;
+        border-radius: 16px;
+        font-size: 0.75rem;
+        border: 1px solid var(--color-border);
+        background: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        font-family: inherit;
+        transition: border-color 0.2s, background 0.2s, color 0.2s;
+    }
+
+    .filter-mode-btn:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+    }
+
+    .filter-mode-btn.active {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: var(--color-card-hover-bg);
+    }
+
+    .filter-count {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        margin: 0;
+    }
+
+    .empty {
+        color: var(--color-text-muted);
+        font-style: italic;
+    }
+
+    .filter-empty {
+        color: var(--color-text-muted);
+        font-style: italic;
+        text-align: center;
+        padding: 2rem 0;
+        display: none;
+    }
+
+    .post-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    /* 列表项懒加载动画：滚动到视口时淡入 */
+    .post-item.lazy {
+        opacity: 0;
+        transform: translateY(12px);
+        transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+    }
+
+    .post-item.lazy.lazy-visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+</style>

@@ -48,7 +48,67 @@ const skills = ["HTML", "CSS", "JavaScript", "Astro"];
             </div>
         </section>
 
+        <section class="stats">
+            <h2>站点统计</h2>
+            <p class="stats-subtitle">最近 30 天数据（来源：自托管 Umami）</p>
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-value" data-stat="visitors">—</span>
+                    <span class="stat-label">独立访客</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" data-stat="pageviews">—</span>
+                    <span class="stat-label">页面浏览</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" data-stat="visits">—</span>
+                    <span class="stat-label">访问会话</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" data-stat="bounces">—</span>
+                    <span class="stat-label">跳出数</span>
+                </div>
+            </div>
+            <p class="stats-footer" id="stats-footer" hidden></p>
+        </section>
+
         <Comments />
+
+        <script is:inline>
+            (async () => {
+                const grid = document.getElementById('stats-grid');
+                const footer = document.getElementById('stats-footer');
+                try {
+                    const res = await fetch('/api/stats', { headers: { Accept: 'application/json' } });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const data = await res.json();
+                    // umami 不可用时后端返回 200 + {error: "unavailable"}
+                    if (data.error === 'unavailable') {
+                        grid.querySelectorAll('[data-stat]').forEach((el) => {
+                            el.textContent = '—';
+                        });
+                        if (footer) {
+                            footer.textContent = '统计服务暂时不可用，请稍后再试';
+                            footer.hidden = false;
+                        }
+                        return;
+                    }
+                    if (data.error) throw new Error(data.error);
+                    grid.querySelectorAll('[data-stat]').forEach((el) => {
+                        const key = el.getAttribute('data-stat');
+                        el.textContent = (data[key] ?? 0).toLocaleString('zh-CN');
+                    });
+                } catch (err) {
+                    grid.querySelectorAll('[data-stat]').forEach((el) => {
+                        el.textContent = '—';
+                    });
+                    if (footer) {
+                        footer.textContent = '统计加载失败：' + err.message;
+                        footer.hidden = false;
+                    }
+                }
+            })();
+        </script>
     </div>
 </BaseLayout>
 
@@ -138,5 +198,66 @@ const skills = ["HTML", "CSS", "JavaScript", "Astro"];
     .skill-tag:hover {
         border-color: var(--color-accent);
         color: var(--color-accent);
+    }
+
+    .stats {
+        margin-top: 3rem;
+        padding-top: 2rem;
+        border-top: 1px solid var(--color-border);
+    }
+
+    .stats h2 {
+        font-size: 1.2rem;
+        margin-bottom: 0.4rem;
+        color: var(--color-text);
+    }
+
+    .stats-subtitle {
+        font-size: 0.85rem;
+        color: var(--color-text-muted);
+        margin-bottom: 1.2rem;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+    }
+
+    .stat-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1.2rem 0.8rem;
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        background: var(--color-blockquote-bg);
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: clamp(1.3rem, 4vw, 1.8rem);
+        font-weight: 600;
+        color: var(--color-accent);
+        line-height: 1.1;
+        margin-bottom: 0.3rem;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+    }
+
+    .stats-footer {
+        margin-top: 1rem;
+        font-size: 0.85rem;
+        color: var(--color-text-muted);
+    }
+
+    @media (max-width: 560px) {
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
     }
 </style>

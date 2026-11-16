@@ -4,6 +4,7 @@ description: '记录在国内环境下安装和登录谷歌 Antigravity agent �
 author: 'HaxiLin'
 pubDate: 2026-07-18
 tags: ["antigravity", "ai", "proxy", "tools"]
+altTags: []
 ---
 
 今天主要研究了一下 **Antigravity**，这是谷歌推出的 agent。在国内使用还是非常麻烦，下面就来介绍我是怎么安装并跑通登录的。

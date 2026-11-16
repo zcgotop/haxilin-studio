@@ -1,5 +1,7 @@
 ---
 const { post } = Astro.props;
+const isAlt = post.data.tags.includes("alt");
+const altTags = isAlt ? post.data.altTags : [];
 ---
 
 <article class="post-card">
@@ -10,13 +12,17 @@ const { post } = Astro.props;
         <time datetime={post.data.pubDate.toISOString()}>
             {post.data.pubDate.toLocaleDateString()}
         </time>
-        {post.data.tags && post.data.tags.length > 0 && (
-            <span class="post-tags">
-                {post.data.tags.map((tag: string) => (
-                    <span class="post-tag">{tag}</span>
-                ))}
-            </span>
-        )}
+        <span class="post-tags">
+            {isAlt && (
+                <a href="/alt" class="post-tag post-tag-alt">alt</a>
+            )}
+            {!isAlt && post.data.tags.map((tag: string) => (
+                <a href={`/blog#${tag}`} class="post-tag">{tag}</a>
+            ))}
+            {isAlt && altTags.map((tag: string) => (
+                <a href={`/alt#${tag}`} class="post-tag">{tag}</a>
+            ))}
+        </span>
     </div>
     {post.data.description && (
         <p class="post-desc">{post.data.description}</p>
@@ -85,6 +91,22 @@ const { post } = Astro.props;
         border-radius: 10px;
         font-size: 0.75rem;
         border: 1px solid var(--color-border);
+        text-decoration: none;
+        color: var(--color-text);
+        transition: border-color 0.2s, color 0.2s;
+        position: relative;
+        z-index: 1;
+    }
+
+    .post-tag:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+    }
+
+    .post-tag-alt {
+        font-style: italic;
+        border-color: var(--color-accent);
+        color: var(--color-accent);
     }
 
     .post-desc {

@@ -16,7 +16,8 @@ const blog = defineCollection({
         url: z.string(),
         alt: z.string()
       }).optional(),
-      tags: z.array(z.string())
+      tags: z.array(z.string()),
+      altTags: z.array(z.string()).default([])
     })
 });
 // 导出一个单独的 `collections` 对象用以注册你的集合（们）

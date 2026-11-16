@@ -39,6 +39,15 @@ function readFrontmatter(filePath) {
       .filter(Boolean);
   }
 
+  let altTags = [];
+  const altTagsMatch = fm.match(/^altTags:\s*\[([\s\S]*?)\]/m);
+  if (altTagsMatch) {
+    altTags = altTagsMatch[1]
+      .split(",")
+      .map((t) => t.trim().replace(/^"|"$/g, "").replace(/^'|'$/g, ""))
+      .filter(Boolean);
+  }
+
   let image = undefined;
   const imageUrl = fm.match(/^image:\n\s+url:\s*(.+)$/m)?.[1]?.trim();
   if (imageUrl) {
@@ -46,10 +55,10 @@ function readFrontmatter(filePath) {
     image = { url: imageUrl, alt: imageAlt };
   }
 
-  return { title, description, author, pubDate, tags, image };
+  return { title, description, author, pubDate, tags, altTags, image };
 }
 
-function buildFrontmatter({ title, description, author, pubDate, tags, image, imageAlt }) {
+function buildFrontmatter({ title, description, author, pubDate, tags, altTags, image, imageAlt }) {
   let fm = "---\n";
   fm += `title: '${title.replace(/'/g, "\\'")}'\n`;
   fm += `description: '${description.replace(/'/g, "\\'")}'\n`;
@@ -58,6 +67,14 @@ function buildFrontmatter({ title, description, author, pubDate, tags, image, im
 
   const tagsStr = tags.map((t) => `"${t}"`).join(", ");
   fm += `tags: [${tagsStr}]\n`;
+
+  const altTagsArr = altTags || [];
+  if (altTagsArr.length > 0) {
+    const altTagsStr = altTagsArr.map((t) => `"${t}"`).join(", ");
+    fm += `altTags: [${altTagsStr}]\n`;
+  } else {
+    fm += `altTags: []\n`;
+  }
 
   if (image) {
     fm += `image:\n  url: ../assets/${image}\n`;
@@ -85,6 +102,28 @@ const PORT = process.env.PORT || 3001;
 
 // JSON body parser
 app.use(express.json({ limit: "10mb" }));
+
+// 动态注入缓存破坏版本号（基于 app.js / styles.css 的修改时间），
+// 确保本地开发时浏览器始终加载最新代码，无需手动硬刷新
+const PUBLIC_DIR = path.join(__dirname, "public");
+function fileMtime(file) {
+  try { return fs.statSync(path.join(PUBLIC_DIR, file)).mtime.getTime(); }
+  catch { return Date.now(); }
+}
+function serveIndex(req, res) {
+  const htmlPath = path.join(PUBLIC_DIR, "index.html");
+  fs.readFile(htmlPath, "utf-8", (err, html) => {
+    if (err) { res.status(500).send("无法读取 index.html"); return; }
+    const v = fileMtime("app.js") + fileMtime("styles.css");
+    const out = html
+      .replace(/app\.js\?v=\d+/g, `app.js?v=${v}`)
+      .replace(/styles\.css\?v=\d+/g, `styles.css?v=${v}`);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.send(out);
+  });
+}
+app.get("/", serveIndex);
+app.get("/index.html", serveIndex);
 
 // 静态文件（禁用缓存，确保本地开发时总是加载最新文件）
 app.use(express.static(path.join(__dirname, "public"), {
@@ -148,14 +187,14 @@ app.get("/api/get", (req, res) => {
 // POST /api/save — 发布文章
 app.post("/api/save", (req, res) => {
   try {
-    const { title, description, author, pubDate, tags, content, image, imageAlt, filename } = req.body;
+    const { title, description, author, pubDate, tags, altTags, content, image, imageAlt, filename } = req.body;
 
     if (!title || !description || !content)
       return res.status(400).json({ success: false, error: "标题、简介、正文不能为空" });
     if (!tags || tags.length === 0)
       return res.status(400).json({ success: false, error: "至少需要一个标签" });
 
-    const fm = buildFrontmatter({ title, description, author, pubDate, tags, image, imageAlt });
+    const fm = buildFrontmatter({ title, description, author, pubDate, tags, altTags, image, imageAlt });
     const fullContent = fm + content.trim() + "\n";
     const saveFilename = filename || `${pubDate}-${generateSlug(title)}.md`;
     fs.writeFileSync(path.join(BLOG_DIR, saveFilename), fullContent, "utf-8");
@@ -171,11 +210,9 @@ app.get("/api/drafts", (req, res) => {
     ensureDraftsDir();
     const files = fs.readdirSync(DRAFTS_DIR).filter((f) => f.endsWith(".md"));
     const drafts = files.map((f) => {
-      const raw = fs.readFileSync(path.join(DRAFTS_DIR, f), "utf-8");
-      const title = raw.match(/^title:\s*'([^']*)'/m)?.[1] || raw.match(/^title:\s*"([^"]*)"/m)?.[1] || f;
-      const pubDate = raw.match(/^pubDate:\s*([\d-]+)/m)?.[1] || "";
+      const fm = readFrontmatter(path.join(DRAFTS_DIR, f));
       const stat = fs.statSync(path.join(DRAFTS_DIR, f));
-      return { filename: f, title, pubDate, modified: stat.mtime.toISOString() };
+      return { filename: f, ...fm, modified: stat.mtime.toISOString() };
     });
     drafts.sort((a, b) => new Date(b.modified).valueOf() - new Date(a.modified).valueOf());
     res.json({ success: true, drafts });
@@ -209,12 +246,12 @@ app.get("/api/draft", (req, res) => {
 app.post("/api/draft", (req, res) => {
   try {
     ensureDraftsDir();
-    const { title, description, author, pubDate, tags, content, image, imageAlt, filename } = req.body;
+    const { title, description, author, pubDate, tags, altTags, content, image, imageAlt, filename } = req.body;
 
     if (!title || !description || !content)
       return res.status(400).json({ success: false, error: "标题、简介、正文不能为空" });
 
-    const fm = buildFrontmatter({ title, description, author, pubDate, tags, image, imageAlt });
+    const fm = buildFrontmatter({ title, description, author, pubDate, tags, altTags, image, imageAlt });
     const fullContent = fm + content.trim() + "\n";
     const draftFilename = filename || `${pubDate}-${generateSlug(title)}.md`;
     fs.writeFileSync(path.join(DRAFTS_DIR, draftFilename), fullContent, "utf-8");
@@ -293,6 +330,7 @@ app.post("/api/upload-image", upload.single("image"), async (req, res) => {
     res.json({
       success: true,
       filename: webpFilename,
+      originalName,
       url: `../assets/${webpFilename}`,
     });
   } catch (e) {
@@ -484,9 +522,11 @@ app.get("/api/deploy", (req, res) => {
       send("info", "⚠️ 未设置 API Token，尝试使用 wrangler login 凭证（如未登录将失败）");
     }
 
-    // 第二步：wrangler deploy（Worker 模式，使用 wrangler.jsonc 配置）
+    // 第二步：wrangler deploy（Worker 模式，使用适配器生成的完整配置）
+    // @astrojs/cloudflare 适配器在构建时生成 dist/server/wrangler.json
+    // （含 main: entry.mjs、assets: ../client、KV 绑定等），部署以它为准
     // 该 Worker 已绑定自定义域名 x.zcgo.top，部署后直接更新线上站点
-    const deployProc = spawn("npx", ["wrangler", "deploy"], {
+    const deployProc = spawn("npx", ["wrangler", "deploy", "--config", "dist/server/wrangler.json"], {
       cwd: PROJECT_ROOT,
       shell: true,
       env: deployEnv,

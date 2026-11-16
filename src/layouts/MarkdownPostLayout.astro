@@ -2,6 +2,8 @@
 import BaseLayout from "./BaseLayout.astro";
 import Comments from "../components/Comments.astro";
 const { frontmatter } = Astro.props;
+const isAlt = frontmatter.tags.includes("alt");
+const altTags = isAlt ? frontmatter.altTags : [];
 ---
 
 <BaseLayout pageTitle={frontmatter.title} showTitle={false}>
@@ -15,13 +17,17 @@ const { frontmatter } = Astro.props;
                 <span>作者：{frontmatter.author}</span>
             </div>
             <p class="post-desc"><em>{frontmatter.description}</em></p>
-            {frontmatter.tags && frontmatter.tags.length > 0 && (
-                <div class="tags">
-                    {frontmatter.tags.map((tag: string) => (
-                        <a href={`/tags/${tag}`} class="tag">{tag}</a>
-                    ))}
-                </div>
-            )}
+            <div class="tags">
+                {isAlt && (
+                    <a href="/alt" class="tag tag-alt">alt</a>
+                )}
+                {!isAlt && frontmatter.tags.map((tag: string) => (
+                    <a href={`/blog#${tag}`} class="tag">{tag}</a>
+                ))}
+                {isAlt && altTags.map((tag: string) => (
+                    <a href={`/alt#${tag}`} class="tag">{tag}</a>
+                ))}
+            </div>
         </header>
 
         {frontmatter.image && (
@@ -92,6 +98,12 @@ const { frontmatter } = Astro.props;
     }
 
     .tag:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+    }
+
+    .tag-alt {
+        font-style: italic;
         border-color: var(--color-accent);
         color: var(--color-accent);
     }

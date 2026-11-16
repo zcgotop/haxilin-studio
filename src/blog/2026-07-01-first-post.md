@@ -4,6 +4,7 @@ description: '第一篇博客'
 author: 'HaxiLin'
 pubDate: 2026-07-01
 tags: ["ai", "astro", "blogging"]
+altTags: []
 ---
 
 欢迎来到我学习关于 Astro 的新博客！在这里，我将分享我建立新网站的学习历程。

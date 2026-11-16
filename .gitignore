@@ -31,3 +31,10 @@ pnpm-debug.log*
 
 # admin-tool Cloudflare token (contains secret)
 admin-tool/.cf-token
+
+# QwenWork 运维补录：备份文件与 AI 工具本地状态，禁止入库
+.env.bak*
+.env.*.bak
+.workbuddy/
+.clawhub/
+*.swp

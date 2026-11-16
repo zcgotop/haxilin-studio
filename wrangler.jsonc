@@ -1,8 +1,5 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "compatibility_date": "2026-07-05",
-  "name": "haxilin-studio",
-  "assets": {
-    "directory": "./dist"
-  }
+  "name": "haxilin-studio"
 }

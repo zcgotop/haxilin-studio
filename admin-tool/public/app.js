@@ -33,7 +33,53 @@ function parseMarkdown(text) {
     return t;
   }
 
-  for (const line of lines) {
+  // 表格分隔行判定：| --- | --- | 或 |:--|:--:|
+  function isTableSeparator(s) {
+    const t = s.trim();
+    if (!t || !t.includes("-")) return false;
+    if (!/^[\|\s:.\-]+$/.test(t)) return false;
+    return true;
+  }
+
+  // 拆分表格行（忽略转义的 \|）
+  function splitRow(s) {
+    const trimmed = s.trim().replace(/^\|/, "").replace(/\|$/, "");
+    const parts = trimmed.split(/(?<!\\)\|/);
+    return parts.map(c => c.trim().replace(/\\\|/g, "|"));
+  }
+
+  // 构建表格 HTML
+  function buildTable(headerLine, sepLine, bodyLines) {
+    const headers = splitRow(headerLine);
+    const aligns = splitRow(sepLine).map(s => {
+      const l = s.startsWith(":");
+      const r = s.endsWith(":");
+      if (l && r) return "center";
+      if (r) return "right";
+      if (l) return "left";
+      return "";
+    });
+    let html = '<table class="md-table">\n<thead>\n<tr>';
+    headers.forEach((h, idx) => {
+      const align = aligns[idx] ? ` style="text-align:${aligns[idx]}"` : "";
+      html += `<th${align}>${inline(h)}</th>`;
+    });
+    html += "</tr>\n</thead>\n<tbody>\n";
+    bodyLines.forEach(row => {
+      const cells = splitRow(row);
+      html += "<tr>";
+      cells.forEach((c, idx) => {
+        const align = aligns[idx] ? ` style="text-align:${aligns[idx]}"` : "";
+        html += `<td${align}>${inline(c)}</td>`;
+      });
+      html += "</tr>\n";
+    });
+    html += "</tbody>\n</table>";
+    return html;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     // 代码块
     if (line.startsWith("```")) {
       if (inCode) { out.push("</code></pre>"); inCode = false; }
@@ -50,6 +96,20 @@ function parseMarkdown(text) {
     if (m = line.match(/^# (.+)/)) { closeAll(); out.push("<h1>" + inline(m[1]) + "</h1>"); continue; }
     if (line.match(/^---+$/)) { closeAll(); out.push("<hr>"); continue; }
 
+    // 表格 (GFM) — 当前行含 | 且下一行为分隔行
+    if (line.includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const body = [];
+      let j = i + 2;
+      while (j < lines.length && lines[j].includes("|") && lines[j].trim() !== "") {
+        body.push(lines[j]);
+        j++;
+      }
+      closeAll();
+      out.push(buildTable(line, lines[i + 1], body));
+      i = j - 1; // 跳过已处理的表体行
+      continue;
+    }
+
     // 引用
     if (m = line.match(/^> (.+)/)) { closeUl(); closeOl(); flushPara(); if (!inBq) { out.push("<blockquote>"); inBq = true; } out.push(inline(m[1])); continue; }
 
@@ -58,6 +118,9 @@ function parseMarkdown(text) {
 
     // 有序列表
     if (m = line.match(/^\d+\. (.+)/)) { closeUl(); closeBq(); flushPara(); if (!inOl) { out.push("<ol>"); inOl = true; } out.push("<li>" + inline(m[1]) + "</li>"); continue; }
+
+    // HTML 块（如居中文字 <div style="text-align:center">）
+    if (line.match(/^<\w[\w\s]*[=>]/)) { closeAll(); out.push(line); continue; }
 
     // 普通段落
     closeUl(); closeOl(); closeBq();
@@ -76,9 +139,12 @@ const state = {
   isDraft: false,
   articles: [],
   filter: "all",
+  category: "all",
   search: "",
   selectedTags: [],
   allTags: [],
+  selectedAltTags: [],
+  allAltTags: [],
   sidebarCollapsed: false,
   hasChanges: false,
   autoSaveKey: "haxilin-editor-autosave",
@@ -167,8 +233,9 @@ async function loadArticles() {
       return db - da;
     });
 
-    // 收集所有标签
-    state.allTags = [...new Set(posts.flatMap(p => p.tags || []))].sort();
+    // 收集所有标签（从已发布文章和草稿中汇总）
+    state.allTags = [...new Set(state.articles.flatMap(a => a.tags || []))].sort();
+    state.allAltTags = [...new Set(state.articles.flatMap(a => a.altTags || []))].sort();
 
     renderArticleList();
   } catch (e) {
@@ -185,12 +252,21 @@ function renderArticleList() {
     items = items.filter(a => a._type === state.filter);
   }
 
-  // 搜索
+  // 分类（博客 / Alter）
+  if (state.category !== "all") {
+    items = items.filter(a => {
+      const isAlt = (a.tags || []).includes("alt");
+      return state.category === "alt" ? isAlt : !isAlt;
+    });
+  }
+
+  // 搜索（匹配标题、普通标签和 Alt 标签）
   if (state.search) {
     const q = state.search.toLowerCase();
     items = items.filter(a =>
       (a.title || "").toLowerCase().includes(q) ||
-      (a.tags || []).some(t => t.toLowerCase().includes(q))
+      (a.tags || []).some(t => t.toLowerCase().includes(q)) ||
+      (a.altTags || []).some(t => t.toLowerCase().includes(q))
     );
   }
 
@@ -204,11 +280,16 @@ function renderArticleList() {
     const badge = a._type === "draft"
       ? '<span class="ai-badge draft">草稿</span>'
       : '<span class="ai-badge published">已发布</span>';
-    const tags = (a.tags || []).slice(0, 2).map(t => `#${t}`).join(" ");
+    const isAlt = (a.tags || []).includes("alt");
+    const catBadge = isAlt
+      ? '<span class="ai-cat alt">Alter</span>'
+      : '<span class="ai-cat blog">博客</span>';
+    const tagList = isAlt ? (a.altTags || []) : (a.tags || []);
+    const tags = tagList.slice(0, 2).map(t => `#${t}`).join(" ");
     const date = fmtDate(a.pubDate) || fmtDate(a.modified);
     return `<div class="article-item ${isActive ? "active" : ""}" onclick="loadArticle('${escHtml(a.filename)}', ${a._type === "draft"})">
       <div class="ai-title">${escHtml(a.title || a.filename)}</div>
-      <div class="ai-meta">${badge} ${date}${tags ? " · " + tags : ""}</div>
+      <div class="ai-meta">${catBadge} ${badge} ${date}${tags ? " · " + tags : ""}</div>
     </div>`;
   }).join("");
 }
@@ -228,11 +309,13 @@ async function loadArticle(filename, isDraft) {
     $("fContent").value = data.content || "";
 
     state.selectedTags = fm.tags || [];
+    state.selectedAltTags = fm.altTags || [];
     state.currentFile = filename;
     state.isDraft = isDraft;
     state.hasChanges = false;
 
     renderTags();
+    renderAltTags();
     updatePreview();
     updateWordCount();
     updateBreadcrumb();
@@ -256,9 +339,11 @@ function newArticle() {
   state.currentFile = null;
   state.isDraft = false;
   state.selectedTags = [];
+  state.selectedAltTags = [];
   state.hasChanges = false;
 
   renderTags();
+  renderAltTags();
   updatePreview();
   updateWordCount();
   updateBreadcrumb();
@@ -282,6 +367,7 @@ async function saveDraft() {
     const data = await apiPost("/api/draft", {
       title, description: desc || "无简介", author: $("fAuthor").value.trim() || "HaxiLin",
       pubDate: $("fDate").value || todayStr(), tags: state.selectedTags.length ? state.selectedTags : ["未分类"],
+      altTags: state.selectedAltTags,
       content, filename: state.currentFile,
     });
     if (data.success) {
@@ -313,6 +399,7 @@ async function publish() {
     const data = await apiPost("/api/save", {
       title, description: desc || "无简介", author: $("fAuthor").value.trim() || "HaxiLin",
       pubDate: $("fDate").value || todayStr(), tags: state.selectedTags,
+      altTags: state.selectedAltTags,
       content, filename: state.currentFile && !state.isDraft ? state.currentFile : null,
     });
     if (data.success) {
@@ -424,12 +511,16 @@ function toggleMetadata() {
 }
 
 /* ==================== 标签 ==================== */
+const ALT_TAG = "alt";
+
 function renderTags() {
   const wrap = $("tagWrap");
   wrap.innerHTML = "";
   state.allTags.forEach(tag => {
     const btn = document.createElement("button");
-    btn.className = "tag-chip" + (state.selectedTags.includes(tag) ? " selected" : "");
+    let cls = "tag-chip" + (state.selectedTags.includes(tag) ? " selected" : "");
+    if (tag === ALT_TAG) cls += " alt-tag";
+    btn.className = cls;
     btn.textContent = tag;
     btn.type = "button";
     btn.onclick = () => toggleTag(tag);
@@ -450,14 +541,85 @@ function toggleTag(tag) {
   const idx = state.selectedTags.indexOf(tag);
   if (idx >= 0) state.selectedTags.splice(idx, 1);
   else state.selectedTags.push(tag);
+
+  // 选中 alt 时，清空普通 tag 的其他选择（alt 文章用 altTags 体系）
+  // 取消 alt 时，清空 altTags
+  if (tag === ALT_TAG) {
+    if (state.selectedTags.includes(ALT_TAG)) {
+      state.selectedTags = [ALT_TAG];
+    } else {
+      state.selectedAltTags = [];
+    }
+  }
+
   renderTags();
+  renderAltTags();
 }
 
 function addNewTag(tag) {
   if (state.selectedTags.includes(tag)) return;
+  // 通过输入添加 "alt" 标签时，触发 alt 模式（清空其他普通标签）
+  if (tag === ALT_TAG) {
+    state.selectedTags = [ALT_TAG];
+    if (!state.allTags.includes(tag)) { state.allTags.push(tag); state.allTags.sort(); }
+    renderTags();
+    renderAltTags();
+    return;
+  }
+  // alt 模式下不允许添加普通标签（alt 文章用 altTags 体系）
+  if (isAltMode()) {
+    showToast("Alt 模式下请使用下方 Alt 专属标签", "info");
+    return;
+  }
   state.selectedTags.push(tag);
   if (!state.allTags.includes(tag)) { state.allTags.push(tag); state.allTags.sort(); }
   renderTags();
+}
+
+/* ==================== Alt 专属标签 ==================== */
+function isAltMode() {
+  return state.selectedTags.includes(ALT_TAG);
+}
+
+function renderAltTags() {
+  const wrap = $("altTagWrap");
+  if (!wrap) return;
+  const show = isAltMode();
+  wrap.style.display = show ? "" : "none";
+  if (!show) return;
+
+  wrap.innerHTML = "";
+  state.allAltTags.forEach(tag => {
+    const btn = document.createElement("button");
+    btn.className = "tag-chip" + (state.selectedAltTags.includes(tag) ? " selected" : "");
+    btn.textContent = tag;
+    btn.type = "button";
+    btn.onclick = () => toggleAltTag(tag);
+    wrap.appendChild(btn);
+  });
+  const input = document.createElement("input");
+  input.className = "tag-input";
+  input.placeholder = "+新 Alt 标签";
+  input.type = "text";
+  input.onkeydown = e => {
+    if (e.key === "Enter") { e.preventDefault(); if (input.value.trim()) { addNewAltTag(input.value.trim()); input.value = ""; } }
+  };
+  input.onblur = () => { if (input.value.trim()) { addNewAltTag(input.value.trim()); input.value = ""; } };
+  wrap.appendChild(input);
+}
+
+function toggleAltTag(tag) {
+  const idx = state.selectedAltTags.indexOf(tag);
+  if (idx >= 0) state.selectedAltTags.splice(idx, 1);
+  else state.selectedAltTags.push(tag);
+  renderAltTags();
+}
+
+function addNewAltTag(tag) {
+  if (state.selectedAltTags.includes(tag)) return;
+  state.selectedAltTags.push(tag);
+  if (!state.allAltTags.includes(tag)) { state.allAltTags.push(tag); state.allAltTags.sort(); }
+  renderAltTags();
 }
 
 /* ==================== 图片上传 ==================== */
@@ -559,6 +721,20 @@ function applyFormat(action) {
       ta.focus(); ta.setSelectionRange(newEnd, newEnd);
       break;
     }
+    case "table": {
+      const prefix = (before === "" || before.endsWith("\n")) ? "" : "\n";
+      const rows = [
+        "| 列1 | 列2 | 列3 |",
+        "| --- | --- | --- |",
+        "| 单元格 | 单元格 | 单元格 |",
+        "| 单元格 | 单元格 | 单元格 |",
+      ].join("\n");
+      insert = prefix + rows + "\n";
+      ta.value = before + insert + after;
+      newEnd = start + insert.length;
+      ta.focus(); ta.setSelectionRange(newEnd, newEnd);
+      break;
+    }
   }
   updatePreview();
   updateWordCount();
@@ -615,6 +791,7 @@ function saveToLocalStorage() {
     date: $("fDate").value,
     content: $("fContent").value,
     tags: state.selectedTags,
+    altTags: state.selectedAltTags,
     currentFile: state.currentFile,
     isDraft: state.isDraft,
     timestamp: Date.now(),
@@ -637,9 +814,11 @@ function checkAutoSave() {
     $("fDate").value = saved.date || todayStr();
     $("fContent").value = saved.content || "";
     state.selectedTags = saved.tags || [];
+    state.selectedAltTags = saved.altTags || [];
     state.currentFile = saved.currentFile;
     state.isDraft = saved.isDraft;
     renderTags();
+    renderAltTags();
     updatePreview();
     updateWordCount();
     updateBreadcrumb();
@@ -989,11 +1168,20 @@ function init() {
   // 搜索
   $("searchInput").oninput = (e) => { state.search = e.target.value; renderArticleList(); };
 
-  // 筛选
+  // 筛选（草稿 / 已发布）
   document.querySelectorAll(".sidebar-filters button").forEach(b => {
     b.onclick = () => {
       state.filter = b.dataset.filter;
       document.querySelectorAll(".sidebar-filters button").forEach(x => x.classList.toggle("active", x === b));
+      renderArticleList();
+    };
+  });
+
+  // 分类（博客 / Alter）
+  document.querySelectorAll(".sidebar-categories button").forEach(b => {
+    b.onclick = () => {
+      state.category = b.dataset.category;
+      document.querySelectorAll(".sidebar-categories button").forEach(x => x.classList.toggle("active", x === b));
       renderArticleList();
     };
   });
